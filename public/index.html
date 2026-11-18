@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>采集调度器 · Dashboard</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface-1: #1a1a19;
+    --surface-2: #232322;
+    --ink: #f0efec;
+    --ink-2: #c3c2b7;
+    --muted: #898781;
+    --gridline: #2c2c2a;
+    --border: rgba(255,255,255,0.10);
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+    --series-5: #d55181;
+    --series-6: #008300;
+    --series-7: #9085e9;
+    --series-8: #e66767;
+    --good: #0ca30c;
+    --warning: #fab219;
+    --serious: #ec835a;
+    --critical: #d03b3b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--ink);
+    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  header {
+    display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
+    padding: 14px 20px; border-bottom: 1px solid var(--gridline);
+    position: sticky; top: 0; background: var(--page); z-index: 2;
+  }
+  h1 { font-size: 16px; margin: 0; font-weight: 650; }
+  h1 .sub { color: var(--muted); font-weight: 400; font-size: 12px; margin-left: 8px; }
+  .global-stats { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; color: var(--ink-2); font-size: 13px; }
+  .global-stats b { color: var(--ink); font-variant-numeric: tabular-nums; }
+  main { padding: 16px 20px 40px; display: grid; gap: 16px; }
+  section.sources { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 12px; }
+  .card {
+    background: var(--surface-1); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px 14px;
+  }
+  .card h2 { font-size: 13px; margin: 0 0 2px; display: flex; align-items: center; gap: 8px; font-weight: 600; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0; }
+  .chip {
+    font-size: 11px; color: var(--ink-2); background: var(--surface-2);
+    border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px;
+    font-variant-numeric: tabular-nums;
+  }
+  .badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11.5px; font-weight: 600; border-radius: 4px; padding: 1px 7px;
+    border: 1px solid var(--border); font-variant-numeric: tabular-nums;
+  }
+  .badge.good     { color: var(--good); }
+  .badge.warning  { color: var(--warning); }
+  .badge.serious  { color: var(--serious); }
+  .badge.critical { color: var(--critical); }
+  .badge.muted    { color: var(--muted); }
+  .meter { display: flex; align-items: center; gap: 8px; margin: 8px 0 2px; }
+  .meter .track {
+    flex: 1; height: 6px; background: var(--surface-2);
+    border-radius: 3px; overflow: hidden;
+  }
+  .meter .fill { height: 100%; background: var(--series-1); border-radius: 0 4px 4px 0; transition: width .3s; }
+  .meter .val { font-size: 12px; color: var(--ink-2); font-variant-numeric: tabular-nums; min-width: 64px; text-align: right; }
+  .meter-label { font-size: 11px; color: var(--muted); margin-top: 8px; }
+  .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px 8px; margin-top: 8px; }
+  .stat-grid .k { font-size: 10.5px; color: var(--muted); }
+  .stat-grid .v { font-size: 13px; font-variant-numeric: tabular-nums; }
+  .src-actions { display: flex; gap: 8px; align-items: center; margin-top: 10px; font-size: 12px; color: var(--muted); }
+  .src-actions input {
+    width: 64px; background: var(--surface-2); color: var(--ink);
+    border: 1px solid var(--border); border-radius: 4px; padding: 3px 6px; font: inherit;
+    font-variant-numeric: tabular-nums;
+  }
+  .panel { background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .panel > h2 { font-size: 13px; margin: 0; padding: 10px 14px; border-bottom: 1px solid var(--gridline); font-weight: 600; display: flex; gap: 10px; align-items: baseline; }
+  .panel > h2 .count { color: var(--muted); font-weight: 400; font-size: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th { text-align: left; color: var(--muted); font-weight: 500; font-size: 11px; padding: 6px 14px; border-bottom: 1px solid var(--gridline); }
+  td { padding: 6px 14px; border-bottom: 1px solid var(--gridline); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td .src-tag { display: inline-flex; align-items: center; gap: 6px; }
+  .empty { color: var(--muted); font-size: 12px; padding: 12px 14px; }
+  button {
+    background: var(--surface-2); color: var(--ink); border: 1px solid var(--border);
+    border-radius: 4px; padding: 3px 10px; font: inherit; font-size: 12px; cursor: pointer;
+  }
+  button:hover { border-color: var(--muted); }
+  button.danger { color: var(--serious); }
+  .toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 12.5px; color: var(--ink-2); }
+  .toolbar select, .toolbar input {
+    background: var(--surface-2); color: var(--ink); border: 1px solid var(--border);
+    border-radius: 4px; padding: 4px 8px; font: inherit; font-size: 12.5px;
+  }
+  .toolbar input#task-id { width: 140px; }
+  .toolbar input#task-count { width: 56px; }
+  .events { max-height: 260px; overflow: auto; font-size: 12px; }
+  .events .row { display: flex; gap: 10px; padding: 4px 14px; border-bottom: 1px solid var(--gridline); }
+  .events .row:last-child { border-bottom: none; }
+  .events .t { color: var(--muted); font-variant-numeric: tabular-nums; flex: none; width: 82px; }
+  .events .type { flex: none; width: 74px; color: var(--ink-2); }
+  .events .msg { color: var(--ink-2); word-break: break-all; }
+  .mono { font-variant-numeric: tabular-nums; }
+  .recovery { font-size: 11px; color: var(--warning); }
+  .err { color: var(--serious); font-size: 11.5px; word-break: break-all; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>采集调度器<span class="sub">多来源 · 配额 · 优先级 · 冷却 · 退避 · 公平性</span></h1>
+  <div class="global-stats" id="global-stats"></div>
+</header>
+<main>
+  <div class="panel">
+    <h2>操作 <span class="count">提交任务 / 批量压测 / 重置</span></h2>
+    <div style="padding: 10px 14px;" class="toolbar">
+      <select id="task-source"></select>
+      <input id="task-id" placeholder="任务ID(幂等键,可空)">
+      <input id="task-count" type="number" min="1" max="100" value="1" title="数量">
+      <button id="btn-submit">提交任务</button>
+      <span style="color:var(--muted)">|</span>
+      <button id="btn-flood">每来源 +10</button>
+      <button id="btn-reset" class="danger">重置全部状态</button>
+      <span id="action-msg" style="color:var(--muted)"></span>
+    </div>
+  </div>
+
+  <section class="sources" id="sources"></section>
+
+  <div class="two-col">
+    <div class="panel">
+      <h2>队列 <span class="count" id="queue-count"></span></h2>
+      <div id="queue"></div>
+    </div>
+    <div class="panel">
+      <h2>运行中 <span class="count" id="running-count"></span></h2>
+      <div id="running"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>最近结束 <span class="count">含取消后的恢复状态</span></h2>
+    <div id="recent"></div>
+  </div>
+
+  <div class="panel">
+    <h2>事件日志 <span class="count">最近 30 条</span></h2>
+    <div class="events" id="events"></div>
+  </div>
+</main>
+
+<script>
+const SLOT_COLORS = ['var(--series-1)','var(--series-2)','var(--series-3)','var(--series-4)',
+                     'var(--series-5)','var(--series-6)','var(--series-7)','var(--series-8)'];
+let sourceColors = new Map();
+let lastState = null;
+
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmtMs = (ms) => {
+  if (ms == null) return '-';
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
+  return `${Math.floor(ms / 60_000)}m${Math.round((ms % 60_000) / 1000)}s`;
+};
+const fmtClock = (t) => new Date(t).toLocaleTimeString('zh-CN', { hour12: false });
+
+function colorFor(sourceId, allSources) {
+  if (!sourceColors.has(sourceId)) {
+    const idx = allSources.findIndex((s) => s.id === sourceId);
+    sourceColors.set(sourceId, idx >= 0 && idx < SLOT_COLORS.length ? SLOT_COLORS[idx] : 'var(--muted)');
+  }
+  return sourceColors.get(sourceId);
+}
+const srcTag = (sourceId) =>
+  `<span class="src-tag"><span class="dot" style="background:${colorFor(sourceId, lastState.sources)}"></span>${esc(sourceId)}</span>`;
+
+function sourceBadge(s) {
+  if (s.backoff.remainingMs > 0) {
+    return `<span class="badge critical">⚠ 退避 ${fmtMs(s.backoff.remainingMs)} · 连续失败 ${s.backoff.failures}</span>`;
+  }
+  if (s.backoff.failures > 0) {
+    return `<span class="badge serious">⚠ 失败 ${s.backoff.failures} 次</span>`;
+  }
+  if (s.cooldownRemainingMs > 0) {
+    return `<span class="badge warning">◷ 冷却 ${fmtMs(s.cooldownRemainingMs)}</span>`;
+  }
+  return `<span class="badge good">● 就绪</span>`;
+}
+
+function meter(label, value, max, title) {
+  const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
+  return `<div class="meter-label">${esc(label)}</div>
+    <div class="meter" title="${esc(title ?? '')}">
+      <div class="track"><div class="fill" style="width:${pct}%"></div></div>
+      <div class="val">${value}/${max}</div>
+    </div>`;
+}
+
+function renderSources(sources) {
+  document.getElementById('sources').innerHTML = sources.map((s) => `
+    <div class="card">
+      <h2><span class="dot" style="background:${colorFor(s.id, sources)}"></span>${esc(s.name)}</h2>
+      <div class="chips">
+        <span class="chip">优先级 ${s.priority}</span>
+        <span class="chip">保底槽位 ${s.minShare}</span>
+        <span class="chip">并发 ${s.running}/${s.maxConcurrency}</span>
+        <span class="chip">冷却 ${fmtMs(s.cooldownMs)}</span>
+        <span class="chip">排队 ${s.queued}</span>
+      </div>
+      ${meter(`配额(每 ${fmtMs(s.quota.refillMs)} 补满 ${s.quota.capacity})`, s.quota.tokens, s.quota.capacity,
+        `已消耗 ${s.stats.quotaSpent} · 已退回 ${s.stats.quotaRefunded}`)}
+      <div style="margin-top:6px">${sourceBadge(s)}</div>
+      <div class="stat-grid">
+        <div><div class="k">成功</div><div class="v">${s.stats.succeeded}</div></div>
+        <div><div class="k">失败</div><div class="v">${s.stats.failed}</div></div>
+        <div><div class="k">取消</div><div class="v">${s.stats.cancelled}</div></div>
+        <div><div class="k">去重拦截</div><div class="v">${s.stats.deduplicated}</div></div>
+      </div>
+      <div class="src-actions">
+        模拟失败率
+        <input type="number" min="0" max="1" step="0.05" value="${s.demo.failureRate}" id="failrate-${esc(s.id)}">
+        <button data-source="${esc(s.id)}" class="btn-failrate">应用</button>
+      </div>
+    </div>`).join('');
+  document.querySelectorAll('.btn-failrate').forEach((btn) => {
+    btn.onclick = async () => {
+      const id = btn.dataset.source;
+      const src = lastState.sources.find((x) => x.id === id);
+      const cfg = { ...src.config, demo: { ...src.config.demo, failureRate: Number(document.getElementById(`failrate-${id}`).value) } };
+      await post('/api/sources', cfg);
+      refresh();
+    };
+  });
+}
+
+const cancelBtn = (t) => `<button class="danger" data-cancel="${esc(t.id)}">取消</button>`;
+
+function renderQueue(queue) {
+  document.getElementById('queue-count').textContent = `${queue.length} 个待调度`;
+  const el = document.getElementById('queue');
+  if (!queue.length) { el.innerHTML = '<div class="empty">队列为空</div>'; return; }
+  el.innerHTML = `<table><thead><tr>
+    <th>任务</th><th>来源</th><th class="num">等待</th><th class="num">尝试</th><th>备注</th><th></th>
+  </tr></thead><tbody>${queue.map((t) => `<tr>
+    <td class="mono">${esc(t.id)}</td><td>${srcTag(t.sourceId)}</td>
+    <td class="num">${fmtMs(lastState.now - t.createdAt)}</td>
+    <td class="num">${t.attempts}</td>
+    <td>${t.recovered ? '<span class="recovery">重启后恢复</span>' : ''}</td>
+    <td>${cancelBtn(t)}</td>
+  </tr>`).join('')}</tbody></table>`;
+}
+
+function renderRunning(running) {
+  document.getElementById('running-count').textContent = `${running.length} 个在途`;
+  const el = document.getElementById('running');
+  if (!running.length) { el.innerHTML = '<div class="empty">无在途任务</div>'; return; }
+  el.innerHTML = `<table><thead><tr>
+    <th>任务</th><th>来源</th><th class="num">已运行</th><th class="num">尝试</th><th></th>
+  </tr></thead><tbody>${running.map((t) => `<tr>
+    <td class="mono">${esc(t.id)}</td><td>${srcTag(t.sourceId)}</td>
+    <td class="num">${fmtMs(lastState.now - t.startedAt)}</td>
+    <td class="num">${t.attempts}</td>
+    <td>${cancelBtn(t)}</td>
+  </tr>`).join('')}</tbody></table>`;
+}
+
+const STATUS_BADGE = {
+  succeeded: '<span class="badge good">✓ 成功</span>',
+  failed: '<span class="badge critical">✕ 失败</span>',
+  cancelled: '<span class="badge warning">⊘ 已取消</span>',
+};
+
+function renderRecent(recent) {
+  const el = document.getElementById('recent');
+  if (!recent.length) { el.innerHTML = '<div class="empty">暂无结束的任务</div>'; return; }
+  el.innerHTML = `<table><thead><tr>
+    <th>任务</th><th>来源</th><th>状态</th><th class="num">耗时</th><th class="num">尝试</th><th>恢复状态 / 错误</th>
+  </tr></thead><tbody>${recent.map((t) => {
+    const notes = [];
+    if (t.quotaRefunded) notes.push('<span class="recovery">配额已退回</span>');
+    if (t.recovered) notes.push('<span class="recovery">重启后重新入队</span>');
+    if (t.lastError) notes.push(`<span class="err">${esc(t.lastError)}</span>`);
+    return `<tr>
+      <td class="mono">${esc(t.id)}</td><td>${srcTag(t.sourceId)}</td>
+      <td>${STATUS_BADGE[t.status] ?? esc(t.status)}</td>
+      <td class="num">${t.startedAt != null && t.finishedAt != null ? fmtMs(t.finishedAt - t.startedAt) : '-'}</td>
+      <td class="num">${t.attempts}</td>
+      <td>${notes.join(' ')}</td>
+    </tr>`;
+  }).join('')}</tbody></table>`;
+}
+
+function renderEvents(events) {
+  const el = document.getElementById('events');
+  if (!events.length) { el.innerHTML = '<div class="empty">暂无事件</div>'; return; }
+  el.innerHTML = events.map((e) => `<div class="row">
+    <span class="t">${fmtClock(e.t)}</span><span class="type">${esc(e.type)}</span><span class="msg">${esc(e.message)}</span>
+  </div>`).join('');
+}
+
+function renderGlobal(state) {
+  const ok = state.sources.reduce((n, s) => n + s.stats.succeeded, 0);
+  const fail = state.sources.reduce((n, s) => n + s.stats.failed, 0);
+  const dedup = state.sources.reduce((n, s) => n + s.stats.deduplicated, 0);
+  document.getElementById('global-stats').innerHTML = `
+    <span>时间 <b>${fmtClock(state.now)}</b></span>
+    <span>全局并发 <b>${state.runningTotal}/${state.maxConcurrency}</b></span>
+    <span>排队 <b>${state.queuedTotal}</b></span>
+    <span>成功 <b>${ok}</b></span>
+    <span>失败 <b>${fail}</b></span>
+    <span>去重拦截 <b>${dedup}</b></span>`;
+}
+
+async function post(url, body) {
+  const res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body ?? {}) });
+  return res.json();
+}
+
+async function refresh() {
+  try {
+    const state = await (await fetch('/api/state')).json();
+    lastState = state;
+    renderGlobal(state);
+    renderSources(state.sources);
+    renderQueue(state.queue);
+    renderRunning(state.running);
+    renderRecent(state.recent);
+    renderEvents(state.events);
+    document.querySelectorAll('[data-cancel]').forEach((btn) => {
+      btn.onclick = async () => { await post(`/api/tasks/${encodeURIComponent(btn.dataset.cancel)}/cancel`); refresh(); };
+    });
+    const sel = document.getElementById('task-source');
+    if (!sel.options.length) {
+      sel.innerHTML = state.sources.map((s) => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('');
+    }
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+document.getElementById('btn-submit').onclick = async () => {
+  const sourceId = document.getElementById('task-source').value;
+  const id = document.getElementById('task-id').value.trim() || undefined;
+  const count = Number(document.getElementById('task-count').value) || 1;
+  const r = await post('/api/tasks', { sourceId, id, count });
+  document.getElementById('action-msg').textContent = `提交 ${r.submitted} 个,去重 ${r.deduplicated} 个`;
+  refresh();
+};
+document.getElementById('btn-flood').onclick = async () => {
+  for (const s of lastState.sources) await post('/api/tasks', { sourceId: s.id, count: 10 });
+  document.getElementById('action-msg').textContent = '每个来源已提交 10 个任务';
+  refresh();
+};
+document.getElementById('btn-reset').onclick = async () => {
+  if (!confirm('重置所有来源、队列与配额状态?')) return;
+  await post('/api/reset');
+  sourceColors = new Map();
+  document.getElementById('task-source').innerHTML = '';
+  document.getElementById('action-msg').textContent = '已重置';
+  refresh();
+};
+
+refresh();
+setInterval(refresh, 1000);
+</script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+{
+  "name": "multi-source-collector-scheduler",
+  "version": "1.0.0",
+  "description": "Multi-source collection scheduler: per-source quota, priority, cooldown, failure backoff, fairness floor, restart persistence and idempotent submission.",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test test/"
+  },
+  "license": "MIT"
+}
